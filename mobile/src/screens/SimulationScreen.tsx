@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,10 +6,14 @@ import {
   TouchableOpacity,
   ScrollView,
   Animated,
+  Alert,
 } from 'react-native';
-import { Challenge, ExerciseIntensity, HeartRateZone, SimulationState } from '../types';
+import { Challenge, ExerciseIntensity, HeartRateZone } from '../types';
 import { ZONE_COLORS, ZONE_INFO, INTENSITY_TARGETS } from '../constants';
+import HeartRateChart from '../components/HeartRateChart';
 import * as api from '../services/api';
+import { useTheme } from '../theme/ThemeContext';
+import { useResponsive } from '../hooks/useResponsive'; // Import the hook
 
 interface SimulationScreenProps {
   challenge: Challenge;
@@ -24,12 +28,35 @@ export default function SimulationScreen({
   onComplete,
   onBackToSelection,
 }: SimulationScreenProps) {
+  const { theme } = useTheme();
+  
+  // 1. Get Dynamic Dimensions & Scale Function
+  const { scale, SCREEN_WIDTH } = useResponsive();
+
+  // 2. Calculate Layout Dynamically
+  const GRID_GAP = scale(12);
+  const PADDING = scale(16);
+  const AVAILABLE_WIDTH = SCREEN_WIDTH - (PADDING * 2);
+  
+  // If screen is very narrow (mobile zoom in), stack columns instead of row
+  const isStacked = AVAILABLE_WIDTH < 500; 
+
+  const LEFT_WIDTH = isStacked ? AVAILABLE_WIDTH : (AVAILABLE_WIDTH * 0.65) - (GRID_GAP / 2);
+  const RIGHT_WIDTH = isStacked ? AVAILABLE_WIDTH : (AVAILABLE_WIDTH * 0.35) - (GRID_GAP / 2);
+
+  const DASHBOARD_HEIGHT = scale(340);
+  const CHART_CARD_HEIGHT = scale(260);
+  const CHART_HEIGHT = scale(180);
+  const RIGHT_CARD_HEIGHT = scale(160);
+
+  // ... State ...
   const [simulationId, setSimulationId] = useState<string | null>(null);
   const [currentHeartRate, setCurrentHeartRate] = useState(70);
   const [zone, setZone] = useState<HeartRateZone>('resting');
   const [intensity, setIntensity] = useState<ExerciseIntensity>('rest');
   const [history, setHistory] = useState<number[]>([70]);
   const [isRunning, setIsRunning] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [timeInZone, setTimeInZone] = useState(0);
   const [completed, setCompleted] = useState(false);
@@ -42,18 +69,15 @@ export default function SimulationScreen({
   useEffect(() => {
     initializeSimulation();
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+      stopInterval();
     };
   }, []);
 
   useEffect(() => {
-    // Pulse animation for heart icon
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
-          toValue: 1.2,
+          toValue: 1.1,
           duration: 400,
           useNativeDriver: true,
         }),
@@ -66,6 +90,13 @@ export default function SimulationScreen({
     ).start();
   }, []);
 
+  const stopInterval = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  };
+
   const initializeSimulation = async () => {
     try {
       const simData = await api.startSimulation(token);
@@ -77,43 +108,26 @@ export default function SimulationScreen({
   };
 
   const startSimulation = () => {
-    if (!simulationId || isRunning) return;
-    
+    if (!simulationId) return;
     setIsRunning(true);
+    setIsPaused(false);
     lastUpdateRef.current = Date.now();
-
     intervalRef.current = setInterval(async () => {
       const now = Date.now();
       const deltaTime = now - lastUpdateRef.current;
       lastUpdateRef.current = now;
-
       try {
-        const updatedState = await api.updateSimulation(
-          simulationId,
-          null,
-          deltaTime,
-          token
-        );
-
+        const updatedState = await api.updateSimulation(simulationId, null, deltaTime, token);
         setCurrentHeartRate(updatedState.currentHeartRate);
         setZone(updatedState.zone);
         setHistory((prev) => {
           const newHistory = [...prev, updatedState.currentHeartRate];
-          return newHistory.slice(-150); // Keep last 150 points
+          return newHistory.slice(-50);
         });
-
         if (updatedState.challenge) {
           setElapsedTime(updatedState.elapsedTime);
           setTimeInZone(updatedState.timeInZone);
-
-          if (updatedState.completed) {
-            setCompleted(true);
-            setGrade(updatedState.grade);
-            setIsRunning(false);
-            if (intervalRef.current) {
-              clearInterval(intervalRef.current);
-            }
-          }
+          if (updatedState.completed) handleComplete(updatedState.grade);
         }
       } catch (error) {
         console.error('Simulation update failed:', error);
@@ -121,11 +135,46 @@ export default function SimulationScreen({
     }, 100);
   };
 
+  const stopSimulation = () => {
+    setIsRunning(false);
+    setIsPaused(true);
+    stopInterval();
+  };
+
+  const restartSimulation = async () => {
+    stopInterval();
+    setIsRunning(false);
+    setIsPaused(false);
+    setElapsedTime(0);
+    setTimeInZone(0);
+    setHistory([70]);
+    setCurrentHeartRate(70);
+    setCompleted(false);
+    setGrade(null);
+    setIntensity('rest');
+    initializeSimulation();
+  };
+
+  const handleComplete = (finalGrade: string) => {
+    setCompleted(true);
+    setGrade(finalGrade);
+    stopSimulation();
+  };
+
+  const saveAndExit = () => {
+    if (completed) {
+        onComplete({ ...challenge, elapsedTime, timeInZone, completed, grade });
+    } else {
+        Alert.alert("End Session?", "Are you sure you want to stop and save current progress?", [
+            { text: "Cancel", style: "cancel" },
+            { text: "Save & Exit", onPress: () => onComplete({ ...challenge, elapsedTime, timeInZone, completed: true, grade: 'C' }) } 
+        ]);
+    }
+  };
+
   const handleIntensityChange = async (newIntensity: ExerciseIntensity) => {
     if (!simulationId || completed) return;
-
     setIntensity(newIntensity);
-
     try {
       await api.updateSimulation(simulationId, newIntensity, 0, token);
     } catch (error) {
@@ -142,152 +191,179 @@ export default function SimulationScreen({
   const goalProgress = Math.min((timeInZone / challenge.goalDuration) * 100, 100);
   const overallProgress = Math.min((elapsedTime / challenge.totalDuration) * 100, 100);
   const zoneInfo = ZONE_INFO[zone];
+  const textPrimary = { color: theme.colors.text };
+  const textSecondary = { color: theme.colors.textSecondary };
+
+  // 3. Dynamic Styles
+  const dynamicStyles = {
+    contentContainer: { padding: PADDING, paddingBottom: scale(40) },
+    headerContainer: { marginBottom: scale(24) },
+    screenTitle: { fontSize: scale(24), marginBottom: scale(8) },
+    screenDesc: { fontSize: scale(14), lineHeight: scale(20), marginBottom: scale(12) },
+    goalBadge: { borderRadius: scale(8), padding: scale(8) },
+    goalText: { fontSize: scale(12) },
+    dashboardRow: { 
+        flexDirection: isStacked ? 'column' : 'row' as const, 
+        justifyContent: 'space-between', 
+        alignItems: 'flex-start',
+        gap: isStacked ? scale(16) : 0, 
+    },
+    columnGap: { gap: scale(16) },
+    card: { borderRadius: scale(12), padding: scale(8) },
+    progressCard: { padding: scale(12) },
+    textLabel: { fontSize: scale(12), marginBottom: scale(2) },
+    textValue: { fontSize: scale(16), marginBottom: scale(4) },
+    progressBarBg: { height: scale(6), borderRadius: scale(3) },
+    buttonGroup: { flexDirection: 'row' as const, gap: scale(8) },
+    actionBtn: { paddingVertical: scale(14), borderRadius: scale(12) },
+    actionBtnText: { fontSize: scale(12) },
+    challengeCard: { padding: scale(12) },
+    challengeLabel: { fontSize: scale(10) },
+    challengeName: { fontSize: scale(14) },
+    switchBtn: { paddingVertical: scale(6), paddingHorizontal: scale(12), borderRadius: scale(6) },
+    switchBtnText: { fontSize: scale(12) },
+    // Right Col
+    heartMonitorCard: { height: RIGHT_CARD_HEIGHT },
+    monitorTitle: { fontSize: scale(12) },
+    heartIcon: { fontSize: scale(24), marginBottom: scale(2) },
+    bpmValue: { fontSize: scale(28) },
+    zoneTag: { paddingVertical: scale(2), borderRadius: scale(8), paddingHorizontal: scale(6), marginTop: scale(4) },
+    zoneTagText: { fontSize: scale(10) },
+    controlsCard: { padding: scale(8), minHeight: scale(200) },
+    controlsTitle: { fontSize: scale(12), marginBottom: scale(8) },
+    verticalControls: { gap: scale(8) },
+    controlBtn: { paddingVertical: scale(12), paddingHorizontal: scale(8), borderRadius: scale(8) },
+    emoji: { fontSize: scale(16), marginRight: scale(8) },
+    controlText: { fontSize: scale(13) },
+  };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      {/* Challenge Info */}
-      <View style={styles.challengeHeader}>
-        <Text style={styles.challengeTitle}>{challenge.name}</Text>
-        <Text style={styles.challengeDesc}>{challenge.description}</Text>
-      </View>
-
-      {/* Heart Rate Display */}
-      <View style={[styles.heartRateCard, { backgroundColor: zoneInfo.bgColor }]}>
-        <View style={styles.heartRateHeader}>
-          <Animated.Text style={[styles.heartIcon, { transform: [{ scale: pulseAnim }] }]}>
-            ❤️
-          </Animated.Text>
-          <Text style={styles.heartRateLabel}>Heart Rate Monitor</Text>
-        </View>
-
-        <View style={styles.bpmContainer}>
-          <Text style={styles.bpmValue}>{Math.round(currentHeartRate)}</Text>
-          <Text style={styles.bpmLabel}>BPM</Text>
-        </View>
-
-        <View style={[styles.zoneIndicator, { borderColor: ZONE_COLORS[zone] }]}>
-          <Text style={styles.zoneLabel}>{zoneInfo.label} Zone</Text>
-          <Text style={styles.zoneDesc}>{zoneInfo.description}</Text>
-          <Text style={styles.zoneRange}>{zoneInfo.range}</Text>
+    <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]} contentContainerStyle={dynamicStyles.contentContainer}>
+      
+      {/* HEADER */}
+      <View style={dynamicStyles.headerContainer}>
+        <Text style={[styles.baseText, dynamicStyles.screenTitle, textPrimary, { fontWeight: 'bold' }]}>{challenge.name}</Text>
+        <Text style={[styles.baseText, dynamicStyles.screenDesc, textSecondary]}>{challenge.description}</Text>
+        <View style={[styles.baseBorder, dynamicStyles.goalBadge, { borderColor: theme.colors.primary, backgroundColor: theme.colors.background }]}>
+          <Text style={[styles.baseText, dynamicStyles.goalText, { color: theme.colors.primary, fontWeight: 'bold' }]}>
+            🎯 Goal: Maintain {ZONE_INFO[challenge.targetZone].label} Zone for {formatTime(challenge.goalDuration)}
+          </Text>
         </View>
       </View>
 
-      {/* Progress Bars */}
-      <View style={styles.progressCard}>
-        <View style={styles.progressSection}>
-          <View style={styles.progressHeader}>
-            <Text style={styles.progressTitle}>Time in Zone</Text>
-            <Text style={styles.progressValue}>
-              {formatTime(timeInZone)} / {formatTime(challenge.goalDuration)}
-            </Text>
-          </View>
-          <View style={styles.progressBarContainer}>
-            <View style={[styles.progressBar, { width: `${goalProgress}%`, backgroundColor: '#10b981' }]} />
-          </View>
+      <View style={dynamicStyles.dashboardRow}>
+        
+        {/* LEFT COLUMN */}
+        <View style={[{ width: LEFT_WIDTH }, dynamicStyles.columnGap]}>
+            {/* Chart */}
+            <View style={[styles.baseCard, dynamicStyles.card, { height: CHART_CARD_HEIGHT, backgroundColor: theme.colors.chartBackground }]}>
+                <HeartRateChart 
+                    history={history} 
+                    currentZone={zone} 
+                    width={LEFT_WIDTH - scale(16)} 
+                    height={CHART_HEIGHT}
+                    title="Live Chart"
+                />
+            </View>
+
+            {/* Progress */}
+            <View style={[styles.baseCard, dynamicStyles.card, dynamicStyles.progressCard, { backgroundColor: theme.colors.card }]}>
+                <View style={styles.rowCenter}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={[styles.baseText, dynamicStyles.textLabel, textSecondary]}>Time in Zone</Text>
+                        <Text style={[styles.baseText, dynamicStyles.textValue, textPrimary, { fontWeight: 'bold' }]}>{formatTime(timeInZone)}</Text>
+                        <View style={[dynamicStyles.progressBarBg, { backgroundColor: theme.colors.border }]}>
+                            <View style={{ height: '100%', borderRadius: scale(3), width: `${goalProgress}%`, backgroundColor: theme.colors.success }} />
+                        </View>
+                    </View>
+                    <View style={{ width: 1, height: '80%', backgroundColor: theme.colors.border, marginHorizontal: scale(12) }} />
+                    <View style={{ flex: 1 }}>
+                        <Text style={[styles.baseText, dynamicStyles.textLabel, textSecondary]}>Total Time</Text>
+                        <Text style={[styles.baseText, dynamicStyles.textValue, textPrimary, { fontWeight: 'bold' }]}>{formatTime(elapsedTime)}</Text>
+                        <View style={[dynamicStyles.progressBarBg, { backgroundColor: theme.colors.border }]}>
+                            <View style={{ height: '100%', borderRadius: scale(3), width: `${overallProgress}%`, backgroundColor: theme.colors.primary }} />
+                        </View>
+                    </View>
+                </View>
+            </View>
+
+            {/* Buttons */}
+            <View style={dynamicStyles.buttonGroup}>
+                {!isRunning ? (
+                    <TouchableOpacity style={[styles.centerBtn, dynamicStyles.actionBtn, { backgroundColor: theme.colors.primary, flex: 1 }]} onPress={startSimulation}>
+                        <Text style={[styles.baseText, dynamicStyles.actionBtnText, { color: '#fff', fontWeight: 'bold' }]}>START</Text>
+                    </TouchableOpacity>
+                ) : (
+                    <TouchableOpacity style={[styles.centerBtn, dynamicStyles.actionBtn, { backgroundColor: theme.colors.warning, flex: 1 }]} onPress={stopSimulation}>
+                        <Text style={[styles.baseText, dynamicStyles.actionBtnText, { color: '#fff', fontWeight: 'bold' }]}>STOP</Text>
+                    </TouchableOpacity>
+                )}
+                <TouchableOpacity style={[styles.centerBtn, dynamicStyles.actionBtn, { backgroundColor: theme.colors.textSecondary, flex: 1 }]} onPress={restartSimulation}>
+                    <Text style={[styles.baseText, dynamicStyles.actionBtnText, { color: '#fff', fontWeight: 'bold' }]}>RESET</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.centerBtn, dynamicStyles.actionBtn, { backgroundColor: theme.colors.success, flex: 1 }]} onPress={saveAndExit}>
+                    <Text style={[styles.baseText, dynamicStyles.actionBtnText, { color: '#fff', fontWeight: 'bold' }]}>SAVE</Text>
+                </TouchableOpacity>
+            </View>
+
+            {/* Challenge Switcher */}
+            <View style={[styles.baseCard, dynamicStyles.card, dynamicStyles.challengeCard, { backgroundColor: theme.colors.card, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+                <View style={{ flex: 1 }}>
+                    <Text style={[styles.baseText, dynamicStyles.challengeLabel, textSecondary, { textTransform: 'uppercase' }]}>Current Challenge</Text>
+                    <Text style={[styles.baseText, dynamicStyles.challengeName, textPrimary, { fontWeight: 'bold' }]} numberOfLines={1}>{challenge.name}</Text>
+                </View>
+                <TouchableOpacity style={[dynamicStyles.switchBtn, { borderWidth: 1, borderColor: theme.colors.primary }]} onPress={onBackToSelection}>
+                    <Text style={[styles.baseText, dynamicStyles.switchBtnText, { color: theme.colors.primary, fontWeight: '600' }]}>Change</Text>
+                </TouchableOpacity>
+            </View>
         </View>
 
-        <View style={styles.progressSection}>
-          <View style={styles.progressHeader}>
-            <Text style={styles.progressTitle}>Total Time</Text>
-            <Text style={styles.progressValue}>
-              {formatTime(elapsedTime)} / {formatTime(challenge.totalDuration)}
-            </Text>
-          </View>
-          <View style={styles.progressBarContainer}>
-            <View style={[styles.progressBar, { width: `${overallProgress}%`, backgroundColor: completed ? '#f59e0b' : '#3b82f6' }]} />
-          </View>
+        {/* RIGHT COLUMN */}
+        <View style={[{ width: RIGHT_WIDTH }, dynamicStyles.columnGap]}>
+            
+            {/* Monitor */}
+            <View style={[styles.baseCard, dynamicStyles.card, dynamicStyles.heartMonitorCard, { backgroundColor: zoneInfo.bgColor, justifyContent: 'center', alignItems: 'center' }]}>
+              <Text style={[styles.baseText, dynamicStyles.monitorTitle, { textAlign: 'center', color: '#1f2937', fontWeight: '600' }]}>Heart Monitor</Text>
+              <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                <Animated.Text style={[dynamicStyles.heartIcon, { transform: [{ scale: pulseAnim }] }]}>❤️</Animated.Text>
+                <Text style={[styles.baseText, dynamicStyles.bpmValue, { color: '#1f2937', fontWeight: 'bold' }]}>{Math.round(currentHeartRate)}</Text>
+              </View>
+              <View style={[styles.baseBorder, dynamicStyles.zoneTag, { borderColor: ZONE_COLORS[zone], backgroundColor: 'rgba(255,255,255,0.5)' }]}>
+                <Text style={[styles.baseText, dynamicStyles.zoneTagText, { color: '#374151', fontWeight: 'bold' }]}>{zoneInfo.label}</Text>
+              </View>
+            </View>
+
+            {/* Controls */}
+            <View style={[styles.baseCard, dynamicStyles.card, dynamicStyles.controlsCard, { backgroundColor: theme.colors.card, justifyContent: 'center', flex: 1 }]}>
+                <Text style={[styles.baseText, dynamicStyles.controlsTitle, { textAlign: 'center', color: theme.colors.textSecondary, fontWeight: '600' }]}>Controls</Text>
+                <View style={[dynamicStyles.verticalControls, { flex: 1, justifyContent: 'space-between' }]}>
+                    <TouchableOpacity
+                        style={[dynamicStyles.controlBtn, { flexDirection: 'row', alignItems: 'center', flex: 1 }, intensity === 'rest' ? { backgroundColor: theme.colors.success } : { backgroundColor: theme.colors.border }]}
+                        onPress={() => handleIntensityChange('rest')}
+                    >
+                        <Text style={dynamicStyles.emoji}>🧘</Text>
+                        <Text style={[styles.baseText, dynamicStyles.controlText, { fontWeight: '600' }, intensity === 'rest' ? { color: '#fff' } : { color: theme.colors.text }]}>Rest</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[dynamicStyles.controlBtn, { flexDirection: 'row', alignItems: 'center', flex: 1 }, intensity === 'jog' ? { backgroundColor: theme.colors.warning } : { backgroundColor: theme.colors.border }]}
+                        onPress={() => handleIntensityChange('jog')}
+                    >
+                        <Text style={dynamicStyles.emoji}>🏃</Text>
+                        <Text style={[styles.baseText, dynamicStyles.controlText, { fontWeight: '600' }, intensity === 'jog' ? { color: '#fff' } : { color: theme.colors.text }]}>Jog</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[dynamicStyles.controlBtn, { flexDirection: 'row', alignItems: 'center', flex: 1 }, intensity === 'sprint' ? { backgroundColor: theme.colors.danger } : { backgroundColor: theme.colors.border }]}
+                        onPress={() => handleIntensityChange('sprint')}
+                    >
+                        <Text style={dynamicStyles.emoji}>⚡</Text>
+                        <Text style={[styles.baseText, dynamicStyles.controlText, { fontWeight: '600' }, intensity === 'sprint' ? { color: '#fff' } : { color: theme.colors.text }]}>Sprint</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+
         </View>
-      </View>
-
-      {/* Grade Display (if completed) */}
-      {completed && grade && (
-        <View style={styles.gradeCard}>
-          <Text style={styles.gradeLabel}>Your Grade</Text>
-          <Text style={styles.gradeValue}>{grade}</Text>
-        </View>
-      )}
-
-      {/* Intensity Controls */}
-      <View style={styles.controlsCard}>
-        <Text style={styles.controlsTitle}>Exercise Controls</Text>
-        <View style={styles.intensityButtons}>
-          <TouchableOpacity
-            style={[
-              styles.intensityButton,
-              intensity === 'rest' && styles.intensityButtonActive,
-              { backgroundColor: intensity === 'rest' ? '#10b981' : '#e5e7eb' },
-            ]}
-            onPress={() => handleIntensityChange('rest')}
-            disabled={completed}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.intensityLabel, intensity === 'rest' && styles.intensityLabelActive]}>
-              Rest
-            </Text>
-            <Text style={[styles.intensityTarget, intensity === 'rest' && styles.intensityTargetActive]}>
-              {INTENSITY_TARGETS.rest.target} BPM
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.intensityButton,
-              intensity === 'jog' && styles.intensityButtonActive,
-              { backgroundColor: intensity === 'jog' ? '#f59e0b' : '#e5e7eb' },
-            ]}
-            onPress={() => handleIntensityChange('jog')}
-            disabled={completed}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.intensityLabel, intensity === 'jog' && styles.intensityLabelActive]}>
-              Jog
-            </Text>
-            <Text style={[styles.intensityTarget, intensity === 'jog' && styles.intensityTargetActive]}>
-              {INTENSITY_TARGETS.jog.target} BPM
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.intensityButton,
-              intensity === 'sprint' && styles.intensityButtonActive,
-              { backgroundColor: intensity === 'sprint' ? '#ef4444' : '#e5e7eb' },
-            ]}
-            onPress={() => handleIntensityChange('sprint')}
-            disabled={completed}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.intensityLabel, intensity === 'sprint' && styles.intensityLabelActive]}>
-              Sprint
-            </Text>
-            <Text style={[styles.intensityTarget, intensity === 'sprint' && styles.intensityTargetActive]}>
-              {INTENSITY_TARGETS.sprint.target} BPM
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Action Buttons */}
-      <View style={styles.actionButtons}>
-        {!isRunning && !completed && (
-          <TouchableOpacity style={styles.startButton} onPress={startSimulation} activeOpacity={0.8}>
-            <Text style={styles.startButtonText}>▶️ Start Challenge</Text>
-          </TouchableOpacity>
-        )}
-
-        {completed && (
-          <TouchableOpacity
-            style={styles.completeButton}
-            onPress={() => onComplete({ ...challenge, elapsedTime, timeInZone, completed, grade })}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.completeButtonText}>View Results</Text>
-          </TouchableOpacity>
-        )}
-
-        <TouchableOpacity style={styles.backButton} onPress={onBackToSelection} activeOpacity={0.8}>
-          <Text style={styles.backButtonText}>← Back to Challenges</Text>
-        </TouchableOpacity>
       </View>
     </ScrollView>
   );
@@ -296,228 +372,26 @@ export default function SimulationScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f3f4f6',
   },
-  contentContainer: {
-    padding: 16,
-    paddingBottom: 32,
+  baseText: {
+    // Base styles if needed
   },
-  challengeHeader: {
-    marginBottom: 16,
-  },
-  challengeTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 4,
-  },
-  challengeDesc: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  heartRateCard: {
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 16,
+  baseCard: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  heartRateHeader: {
+  baseBorder: {
+    borderWidth: 1,
+  },
+  rowCenter: {
     flexDirection: 'row',
+    alignItems: 'center',
+  },
+  centerBtn: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
-  },
-  heartIcon: {
-    fontSize: 28,
-    marginRight: 8,
-  },
-  heartRateLabel: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1f2937',
-  },
-  bpmContainer: {
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  bpmValue: {
-    fontSize: 72,
-    fontWeight: 'bold',
-    color: '#1f2937',
-  },
-  bpmLabel: {
-    fontSize: 24,
-    color: '#6b7280',
-  },
-  zoneIndicator: {
-    borderWidth: 2,
-    borderRadius: 8,
-    padding: 12,
-    alignItems: 'center',
-  },
-  zoneLabel: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 4,
-  },
-  zoneDesc: {
-    fontSize: 13,
-    color: '#4b5563',
-    textAlign: 'center',
-    marginBottom: 2,
-  },
-  zoneRange: {
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  progressCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  progressSection: {
-    marginBottom: 16,
-  },
-  progressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  progressTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#4b5563',
-  },
-  progressValue: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  progressBarContainer: {
-    height: 12,
-    backgroundColor: '#e5e7eb',
-    borderRadius: 6,
-    overflow: 'hidden',
-  },
-  progressBar: {
-    height: '100%',
-    borderRadius: 6,
-  },
-  gradeCard: {
-    backgroundColor: '#dcfce7',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 16,
-    alignItems: 'center',
-  },
-  gradeLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#166534',
-    marginBottom: 8,
-  },
-  gradeValue: {
-    fontSize: 48,
-    fontWeight: 'bold',
-    color: '#15803d',
-  },
-  controlsCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  controlsTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  intensityButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  intensityButton: {
-    flex: 1,
-    paddingVertical: 16,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  intensityButtonActive: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  intensityLabel: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#4b5563',
-    marginBottom: 4,
-  },
-  intensityLabelActive: {
-    color: '#ffffff',
-  },
-  intensityTarget: {
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  intensityTargetActive: {
-    color: '#ffffff',
-    opacity: 0.9,
-  },
-  actionButtons: {
-    gap: 12,
-  },
-  startButton: {
-    backgroundColor: '#3b82f6',
-    paddingVertical: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  startButtonText: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  completeButton: {
-    backgroundColor: '#10b981',
-    paddingVertical: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  completeButtonText: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  backButton: {
-    backgroundColor: '#6b7280',
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  backButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
   },
 });

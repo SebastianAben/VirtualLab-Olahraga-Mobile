@@ -9,6 +9,8 @@ import {
 } from 'react-native';
 import { Challenge } from '../types';
 import * as api from '../services/api';
+import { useTheme } from '../theme/ThemeContext';
+import { scale } from '../utils/responsiveness';
 
 interface ChallengeSelectionProps {
   onSelectChallenge: (challenge: Omit<Challenge, 'elapsedTime' | 'timeInZone' | 'completed' | 'grade'>) => void;
@@ -16,6 +18,7 @@ interface ChallengeSelectionProps {
 }
 
 export default function ChallengeSelectionScreen({ onSelectChallenge, token }: ChallengeSelectionProps) {
+  const { theme, isDarkMode } = useTheme();
   const [challenges, setChallenges] = useState<Omit<Challenge, 'elapsedTime' | 'timeInZone' | 'completed' | 'grade'>[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -42,46 +45,52 @@ export default function ChallengeSelectionScreen({ onSelectChallenge, token }: C
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#3b82f6" />
-        <Text style={styles.loadingText}>Loading challenges...</Text>
+      <View style={[styles.loadingContainer, { backgroundColor: theme.colors.background }]}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>Loading challenges...</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]} contentContainerStyle={styles.contentContainer}>
       <View style={styles.header}>
-        <Text style={styles.title}>Choose Your Challenge</Text>
-        <Text style={styles.subtitle}>
+        <Text style={[styles.title, { color: theme.colors.text }]}>Choose Your Challenge</Text>
+        <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
           Select an exercise simulation to test your cardiovascular control.
         </Text>
       </View>
 
       {challenges.map((challenge) => (
-        <View key={challenge.id} style={styles.challengeCard}>
+        <View key={challenge.id} style={[styles.challengeCard, { backgroundColor: theme.colors.card }]}>
           <View style={styles.cardContent}>
-            <Text style={styles.challengeName}>{challenge.name}</Text>
-            <Text style={styles.challengeDescription}>{challenge.description}</Text>
+            <Text style={[styles.challengeName, { color: theme.colors.text }]}>{challenge.name}</Text>
+            <Text style={[styles.challengeDescription, { color: theme.colors.textSecondary }]}>{challenge.description}</Text>
 
             <View style={styles.infoRow}>
               <View style={styles.infoItem}>
-                <Text style={styles.infoLabel}>🎯 Goal</Text>
-                <Text style={styles.infoValue}>{formatDuration(challenge.goalDuration)} in zone</Text>
+                <Text style={[styles.infoLabel, { color: theme.colors.primary }]}>🎯 Goal</Text>
+                <Text style={[styles.infoValue, { color: theme.colors.text }]}>{formatDuration(challenge.goalDuration)} in zone</Text>
               </View>
               <View style={styles.infoItem}>
-                <Text style={styles.infoLabel}>⏱️ Total Time</Text>
-                <Text style={styles.infoValue}>{formatDuration(challenge.totalDuration)}</Text>
+                <Text style={[styles.infoLabel, { color: theme.colors.primary }]}>⏱️ Total Time</Text>
+                <Text style={[styles.infoValue, { color: theme.colors.text }]}>{formatDuration(challenge.totalDuration)}</Text>
               </View>
             </View>
 
-            <View style={styles.benefitBox}>
-              <Text style={styles.benefitTitle}>📚 Why this is a good challenge:</Text>
-              <Text style={styles.benefitText}>{challenge.benefit}</Text>
+            <View style={[
+                styles.benefitBox, 
+                { 
+                    backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.1)' : '#eff6ff',
+                    borderLeftColor: theme.colors.primary 
+                }
+            ]}>
+              <Text style={[styles.benefitTitle, { color: isDarkMode ? theme.colors.primary : '#1e40af' }]}>📚 Why this is a good challenge:</Text>
+              <Text style={[styles.benefitText, { color: isDarkMode ? theme.colors.text : '#1e40af' }]}>{challenge.benefit}</Text>
             </View>
 
             <TouchableOpacity
-              style={styles.selectButton}
+              style={[styles.selectButton, { backgroundColor: theme.colors.primary }]}
               onPress={() => onSelectChallenge(challenge)}
               activeOpacity={0.8}
             >
@@ -97,112 +106,97 @@ export default function ChallengeSelectionScreen({ onSelectChallenge, token }: C
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f3f4f6',
   },
   contentContainer: {
-    padding: 16,
-    paddingBottom: 32,
+    padding: scale(16),
+    paddingBottom: scale(32),
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f3f4f6',
   },
   loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: '#4b5563',
+    marginTop: scale(12),
+    fontSize: scale(16),
   },
   header: {
-    marginBottom: 24,
+    marginBottom: scale(24),
     alignItems: 'center',
   },
   title: {
-    fontSize: 32,
+    fontSize: scale(32),
     fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 8,
+    marginBottom: scale(8),
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
-    color: '#6b7280',
+    fontSize: scale(18),
     textAlign: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: scale(16),
   },
   challengeCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    marginBottom: 16,
+    borderRadius: scale(12),
+    marginBottom: scale(16),
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: scale(2) },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowRadius: scale(8),
     elevation: 3,
   },
   cardContent: {
-    padding: 20,
+    padding: scale(20),
   },
   challengeName: {
-    fontSize: 24,
+    fontSize: scale(20),
     fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 8,
+    marginBottom: scale(8),
   },
   challengeDescription: {
-    fontSize: 15,
-    color: '#6b7280',
-    marginBottom: 16,
-    lineHeight: 22,
+    fontSize: scale(14),
+    marginBottom: scale(16),
+    lineHeight: scale(20),
   },
   infoRow: {
     flexDirection: 'row',
-    marginBottom: 16,
-    gap: 16,
+    marginBottom: scale(16),
+    gap: scale(16),
   },
   infoItem: {
     flex: 1,
   },
   infoLabel: {
-    fontSize: 13,
-    color: '#3b82f6',
+    fontSize: scale(12),
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: scale(4),
   },
   infoValue: {
-    fontSize: 14,
-    color: '#4b5563',
+    fontSize: scale(13),
   },
   benefitBox: {
-    backgroundColor: '#eff6ff',
-    borderLeftWidth: 4,
-    borderLeftColor: '#3b82f6',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
+    borderLeftWidth: scale(4),
+    padding: scale(12),
+    borderRadius: scale(8),
+    marginBottom: scale(16),
   },
   benefitTitle: {
-    fontSize: 14,
+    fontSize: scale(13),
     fontWeight: '600',
-    color: '#1e40af',
-    marginBottom: 6,
+    marginBottom: scale(6),
   },
   benefitText: {
-    fontSize: 13,
-    color: '#1e40af',
-    lineHeight: 20,
+    fontSize: scale(13),
+    lineHeight: scale(18),
   },
   selectButton: {
-    backgroundColor: '#3b82f6',
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 8,
+    paddingVertical: scale(14),
+    paddingHorizontal: scale(24),
+    borderRadius: scale(8),
     alignItems: 'center',
   },
   selectButtonText: {
     color: '#ffffff',
-    fontSize: 16,
+    fontSize: scale(16),
     fontWeight: 'bold',
   },
 });
