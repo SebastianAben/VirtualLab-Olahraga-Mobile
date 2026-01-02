@@ -198,7 +198,7 @@ export default function SimulationScreen({
     goalBadge: { borderRadius: scale(8), padding: scale(8) },
     goalText: { fontSize: scale(12) },
     dashboardRow: { 
-        flexDirection: isStacked ? 'column' : 'row' as const, 
+        flexDirection: (isStacked ? 'column' : 'row') as 'column' | 'row', 
         justifyContent: 'space-between' as const, 
         alignItems: 'flex-start' as const,
         gap: isStacked ? scale(16) : 0, 
