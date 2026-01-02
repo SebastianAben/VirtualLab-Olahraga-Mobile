@@ -1,25 +1,48 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, ActivityIndicator, Text, TouchableOpacity, Animated } from 'react-native';
+import AuthScreen from './src/screens/AuthScreen';
 import ChallengeSelectionScreen from './src/screens/ChallengeSelectionScreen';
 import SimulationScreen from './src/screens/SimulationScreen';
 import ResultsScreen from './src/screens/ResultsScreen';
-import { Challenge } from './src/types';
+import LearningCenterScreen from './src/screens/LearningCenterScreen';
+import LearningChapterDetailScreen from './src/screens/LearningChapterDetailScreen';
+import ProfileScreen from './src/screens/ProfileScreen';
+import { Challenge, LearningChapter } from './src/types';
+import { learningChapters } from './src/data/learningChapters';
 import * as api from './src/services/api';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { scale } from './src/utils/responsiveness';
 
-type AppView = 'challenges' | 'simulation' | 'results' | 'login';
+type AppView = 'challenges' | 'simulation' | 'results' | 'login' | 'learning' | 'learningDetail' | 'profile';
 
 function MainApp() {
   const [currentView, setCurrentView] = useState<AppView>('login');
   const [selectedChallenge, setSelectedChallenge] = useState<Challenge | null>(null);
+  const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Theme Hook
   const { theme, toggleTheme, isDarkMode } = useTheme();
+  
+  // Theme Transition Animation (0 = Light, 1 = Dark)
+  const themeAnim = useRef(new Animated.Value(isDarkMode ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(themeAnim, {
+      toValue: isDarkMode ? 1 : 0,
+      duration: 300, // Smooth transition duration
+      useNativeDriver: false, // Color interpolation doesn't support native driver
+    }).start();
+  }, [isDarkMode]);
+
+  // Interpolate background color
+  const interpolatedBackgroundColor = themeAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#f1f5f9', '#0f172a'], // Matching ThemeContext colors
+  });
 
   useEffect(() => {
     checkAuth();
@@ -95,6 +118,23 @@ function MainApp() {
     }
   };
 
+  const handleNavigateToLearning = () => {
+    setCurrentView('learning');
+  };
+
+  const handleSelectChapter = (chapterId: string) => {
+    setSelectedChapterId(chapterId);
+    setCurrentView('learningDetail');
+  };
+
+  const handleBackFromChapter = () => {
+    setCurrentView('learning');
+  };
+
+  const handleNavigateToProfile = () => {
+    setCurrentView('profile');
+  };
+
   if (loading) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: theme.colors.background }]}>
@@ -108,42 +148,18 @@ function MainApp() {
   if (currentView === 'login') {
     return (
       <View style={[styles.loginContainer, { backgroundColor: theme.colors.background }]}>
-        <Text style={[styles.loginTitle, { color: theme.colors.text }]}>Virtual Sports Lab</Text>
-        <Text style={[styles.loginSubtitle, { color: theme.colors.textSecondary }]}>Mobile Version</Text>
-        <Text style={styles.loginNote}>
-          🚧 Login screen will be implemented by your teammate
-        </Text>
-        <Text style={[styles.loginInstruction, { color: theme.colors.textSecondary }]}>
-          Note: Make sure backend is running on http://localhost:5000
-        </Text>
-        <Text
-          style={[styles.loginButton, { backgroundColor: theme.colors.primary }]}
-          onPress={async () => {
-            try {
-              const result = await api.signIn('demo@example.com', 'demo123');
-              handleLogin('demo@example.com', result.token);
-            } catch (error) {
-              try {
-                const result = await api.signUp('demo@example.com', 'demo123');
-                handleLogin('demo@example.com', result.token);
-              } catch (signupError) {
-                console.error('Login failed:', signupError);
-                alert('Backend not running! Start backend first: cd backend && npm start');
-              }
-            }
-          }}
-        >
-          Continue as Demo User
-        </Text>
+        <AuthScreen onLoginSuccess={handleLogin} />
         <StatusBar style={isDarkMode ? 'light' : 'dark'} />
       </View>
     );
   }
 
+  const selectedChapter = selectedChapterId ? learningChapters.find(c => c.id === selectedChapterId) : null;
+
   // Main App Navigation
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <StatusBar style={isDarkMode ? 'light' : 'light'} />
+    <Animated.View style={[styles.container, { backgroundColor: interpolatedBackgroundColor }]}>
+      <StatusBar style={isDarkMode ? 'light' : 'dark'} />
       
       {/* Navbar with Dynamic Colors */}
       <View style={[styles.navbar, { backgroundColor: theme.colors.navbar, borderBottomWidth: isDarkMode ? 1 : 0, borderBottomColor: theme.colors.border }]}>
@@ -157,11 +173,18 @@ function MainApp() {
                 <Text style={{ fontSize: 20 }}>{isDarkMode ? '☀️' : '🌙'}</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity>
-                <Text style={[styles.navText, { color: isDarkMode ? theme.colors.textSecondary : '#dbeafe' }]}>Learning</Text>
-            </TouchableOpacity>
+            {/* Dynamic Navigation Button */}
+            {(currentView === 'learning' || currentView === 'learningDetail') ? (
+              <TouchableOpacity onPress={handleBackToSelection}>
+                  <Text style={[styles.navText, { color: isDarkMode ? theme.colors.textSecondary : '#dbeafe' }]}>Virtual Lab</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity onPress={handleNavigateToLearning}>
+                  <Text style={[styles.navText, { color: isDarkMode ? theme.colors.textSecondary : '#dbeafe' }]}>Learning</Text>
+              </TouchableOpacity>
+            )}
 
-            <TouchableOpacity style={styles.navRightSpacing} onPress={() => console.log('Profile clicked')} onLongPress={handleLogout}>
+            <TouchableOpacity style={styles.navRightSpacing} onPress={handleNavigateToProfile} onLongPress={handleLogout}>
                 <Text style={[styles.navIcon, { color: isDarkMode ? theme.colors.text : '#ffffff' }]}>👤</Text>
             </TouchableOpacity>
         </View>
@@ -193,8 +216,30 @@ function MainApp() {
             onTryAgain={handleTryAgain}
           />
         )}
+
+        {currentView === 'learning' && (
+          <LearningCenterScreen 
+            chapters={learningChapters}
+            onSelectChapter={handleSelectChapter}
+          />
+        )}
+
+        {currentView === 'learningDetail' && selectedChapter && (
+          <LearningChapterDetailScreen 
+            chapter={selectedChapter}
+            onBack={handleBackFromChapter}
+          />
+        )}
+
+        {currentView === 'profile' && userEmail && (
+          <ProfileScreen
+            userEmail={userEmail}
+            onBack={handleBackToSelection}
+            onLogout={handleLogout}
+          />
+        )}
       </View>
-    </View>
+    </Animated.View>
   );
 }
 

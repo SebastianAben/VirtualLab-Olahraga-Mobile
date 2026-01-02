@@ -7,7 +7,6 @@ const { signUp, signIn } = require('./auth');
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Environment variable checks
 const dbURI = process.env.MONGODB_URI;
 
 if (!dbURI) {
@@ -19,8 +18,11 @@ if (!process.env.JWT_SECRET) {
   process.exit(1);
 }
 
-// Allow all origins for CORS.
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 // MongoDB Connection

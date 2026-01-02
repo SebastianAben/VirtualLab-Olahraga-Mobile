@@ -17,9 +17,9 @@ export interface Challenge {
   description: string;
   benefit: string;
   targetZone: HeartRateZone;
-  goalDuration: number; // The target to aim for
-  totalDuration: number; // The total time the challenge runs for
-  elapsedTime: number; // The time elapsed since the challenge started
+  goalDuration: number; // Target
+  totalDuration: number; // Total Time
+  elapsedTime: number; 
   timeInZone: number;
   completed: boolean;
   grade: string | null;
@@ -44,4 +44,14 @@ export interface SimulationResult {
   timeAchieved: number;
   grade: string;
   timestamp: string;
+}
+
+export interface LearningChapter {
+  id: string;
+  title: string;
+  summary: string;
+  icon: 'book' | 'activity' | 'brain' | 'heart' | 'target' | 'recovery';
+  takeaways: string[];
+  recommendedReading?: string[];
+  detailedContent?: string[];
 }

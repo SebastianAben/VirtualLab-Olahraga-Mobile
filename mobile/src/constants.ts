@@ -1,14 +1,14 @@
 import { HeartRateZone } from './types';
 
 // API Configuration
-export const API_BASE_URL = 'http://localhost:5000';
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5001';
 
 // Zone Colors
 export const ZONE_COLORS: Record<HeartRateZone, string> = {
-  resting: '#10b981',    // green
-  'fat-burn': '#3b82f6', // blue
-  cardio: '#f59e0b',     // amber
-  peak: '#ef4444',       // red
+  resting: '#10b981',    
+  'fat-burn': '#3b82f6', 
+  cardio: '#f59e0b',     
+  peak: '#ef4444',       
 };
 
 // Zone Information

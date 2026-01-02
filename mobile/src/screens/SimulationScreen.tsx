@@ -13,7 +13,7 @@ import { ZONE_COLORS, ZONE_INFO, INTENSITY_TARGETS } from '../constants';
 import HeartRateChart from '../components/HeartRateChart';
 import * as api from '../services/api';
 import { useTheme } from '../theme/ThemeContext';
-import { useResponsive } from '../hooks/useResponsive'; // Import the hook
+import { useResponsive } from '../hooks/useResponsive'; 
 
 interface SimulationScreenProps {
   challenge: Challenge;
@@ -30,15 +30,12 @@ export default function SimulationScreen({
 }: SimulationScreenProps) {
   const { theme } = useTheme();
   
-  // 1. Get Dynamic Dimensions & Scale Function
   const { scale, SCREEN_WIDTH } = useResponsive();
 
-  // 2. Calculate Layout Dynamically
   const GRID_GAP = scale(12);
   const PADDING = scale(16);
   const AVAILABLE_WIDTH = SCREEN_WIDTH - (PADDING * 2);
-  
-  // If screen is very narrow (mobile zoom in), stack columns instead of row
+
   const isStacked = AVAILABLE_WIDTH < 500; 
 
   const LEFT_WIDTH = isStacked ? AVAILABLE_WIDTH : (AVAILABLE_WIDTH * 0.65) - (GRID_GAP / 2);
@@ -49,7 +46,6 @@ export default function SimulationScreen({
   const CHART_HEIGHT = scale(180);
   const RIGHT_CARD_HEIGHT = scale(160);
 
-  // ... State ...
   const [simulationId, setSimulationId] = useState<string | null>(null);
   const [currentHeartRate, setCurrentHeartRate] = useState(70);
   const [zone, setZone] = useState<HeartRateZone>('resting');
@@ -194,7 +190,6 @@ export default function SimulationScreen({
   const textPrimary = { color: theme.colors.text };
   const textSecondary = { color: theme.colors.textSecondary };
 
-  // 3. Dynamic Styles
   const dynamicStyles = {
     contentContainer: { padding: PADDING, paddingBottom: scale(40) },
     headerContainer: { marginBottom: scale(24) },
@@ -204,8 +199,8 @@ export default function SimulationScreen({
     goalText: { fontSize: scale(12) },
     dashboardRow: { 
         flexDirection: isStacked ? 'column' : 'row' as const, 
-        justifyContent: 'space-between', 
-        alignItems: 'flex-start',
+        justifyContent: 'space-between' as const, 
+        alignItems: 'flex-start' as const,
         gap: isStacked ? scale(16) : 0, 
     },
     columnGap: { gap: scale(16) },
@@ -222,7 +217,6 @@ export default function SimulationScreen({
     challengeName: { fontSize: scale(14) },
     switchBtn: { paddingVertical: scale(6), paddingHorizontal: scale(12), borderRadius: scale(6) },
     switchBtnText: { fontSize: scale(12) },
-    // Right Col
     heartMonitorCard: { height: RIGHT_CARD_HEIGHT },
     monitorTitle: { fontSize: scale(12) },
     heartIcon: { fontSize: scale(24), marginBottom: scale(2) },
@@ -240,7 +234,6 @@ export default function SimulationScreen({
   return (
     <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]} contentContainerStyle={dynamicStyles.contentContainer}>
       
-      {/* HEADER */}
       <View style={dynamicStyles.headerContainer}>
         <Text style={[styles.baseText, dynamicStyles.screenTitle, textPrimary, { fontWeight: 'bold' }]}>{challenge.name}</Text>
         <Text style={[styles.baseText, dynamicStyles.screenDesc, textSecondary]}>{challenge.description}</Text>
@@ -253,9 +246,7 @@ export default function SimulationScreen({
 
       <View style={dynamicStyles.dashboardRow}>
         
-        {/* LEFT COLUMN */}
         <View style={[{ width: LEFT_WIDTH }, dynamicStyles.columnGap]}>
-            {/* Chart */}
             <View style={[styles.baseCard, dynamicStyles.card, { height: CHART_CARD_HEIGHT, backgroundColor: theme.colors.chartBackground }]}>
                 <HeartRateChart 
                     history={history} 
@@ -266,7 +257,6 @@ export default function SimulationScreen({
                 />
             </View>
 
-            {/* Progress */}
             <View style={[styles.baseCard, dynamicStyles.card, dynamicStyles.progressCard, { backgroundColor: theme.colors.card }]}>
                 <View style={styles.rowCenter}>
                     <View style={{ flex: 1 }}>
@@ -287,7 +277,6 @@ export default function SimulationScreen({
                 </View>
             </View>
 
-            {/* Buttons */}
             <View style={dynamicStyles.buttonGroup}>
                 {!isRunning ? (
                     <TouchableOpacity style={[styles.centerBtn, dynamicStyles.actionBtn, { backgroundColor: theme.colors.primary, flex: 1 }]} onPress={startSimulation}>
@@ -306,7 +295,6 @@ export default function SimulationScreen({
                 </TouchableOpacity>
             </View>
 
-            {/* Challenge Switcher */}
             <View style={[styles.baseCard, dynamicStyles.card, dynamicStyles.challengeCard, { backgroundColor: theme.colors.card, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
                 <View style={{ flex: 1 }}>
                     <Text style={[styles.baseText, dynamicStyles.challengeLabel, textSecondary, { textTransform: 'uppercase' }]}>Current Challenge</Text>
@@ -318,10 +306,8 @@ export default function SimulationScreen({
             </View>
         </View>
 
-        {/* RIGHT COLUMN */}
         <View style={[{ width: RIGHT_WIDTH }, dynamicStyles.columnGap]}>
             
-            {/* Monitor */}
             <View style={[styles.baseCard, dynamicStyles.card, dynamicStyles.heartMonitorCard, { backgroundColor: zoneInfo.bgColor, justifyContent: 'center', alignItems: 'center' }]}>
               <Text style={[styles.baseText, dynamicStyles.monitorTitle, { textAlign: 'center', color: '#1f2937', fontWeight: '600' }]}>Heart Monitor</Text>
               <View style={{ alignItems: 'center', justifyContent: 'center' }}>
@@ -333,7 +319,6 @@ export default function SimulationScreen({
               </View>
             </View>
 
-            {/* Controls */}
             <View style={[styles.baseCard, dynamicStyles.card, dynamicStyles.controlsCard, { backgroundColor: theme.colors.card, justifyContent: 'center', flex: 1 }]}>
                 <Text style={[styles.baseText, dynamicStyles.controlsTitle, { textAlign: 'center', color: theme.colors.textSecondary, fontWeight: '600' }]}>Controls</Text>
                 <View style={[dynamicStyles.verticalControls, { flex: 1, justifyContent: 'space-between' }]}>
@@ -374,7 +359,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   baseText: {
-    // Base styles if needed
   },
   baseCard: {
     shadowColor: '#000',
