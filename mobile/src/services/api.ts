@@ -29,49 +29,6 @@ export const getChallenges = async (token: string): Promise<Omit<Challenge, 'ela
   return response.data;
 };
 
-// Simulation
-export const startSimulation = async (token: string) => {
-  const response = await api.post(
-    '/api/simulation/start',
-    {},
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    }
-  );
-  return response.data;
-};
-
-export const setSimulationChallenge = async (
-  simulationId: string,
-  challenge: any,
-  token: string
-) => {
-  const response = await api.post(
-    '/api/simulation/challenge',
-    { simulationId, challenge },
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    }
-  );
-  return response.data;
-};
-
-export const updateSimulation = async (
-  simulationId: string,
-  intensity: string | null,
-  deltaTime: number,
-  token: string
-) => {
-  const response = await api.post(
-    '/api/simulation/update',
-    { simulationId, intensity, deltaTime },
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    }
-  );
-  return response.data;
-};
-
 // Results
 export const saveResult = async (
   challenge: string,

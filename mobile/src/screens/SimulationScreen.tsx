@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,11 +9,11 @@ import {
   Alert,
 } from 'react-native';
 import { Challenge, ExerciseIntensity, HeartRateZone } from '../types';
-import { ZONE_COLORS, ZONE_INFO, INTENSITY_TARGETS } from '../constants';
+import { ZONE_COLORS, ZONE_INFO } from '../constants';
 import HeartRateChart from '../components/HeartRateChart';
-import * as api from '../services/api';
 import { useTheme } from '../theme/ThemeContext';
-import { useResponsive } from '../hooks/useResponsive'; 
+import { useResponsive } from '../hooks/useResponsive';
+import { socketService } from '../services/socket';
 
 interface SimulationScreenProps {
   challenge: Challenge;
@@ -29,13 +29,11 @@ export default function SimulationScreen({
   onBackToSelection,
 }: SimulationScreenProps) {
   const { theme } = useTheme();
-  
   const { scale, SCREEN_WIDTH } = useResponsive();
 
   const GRID_GAP = scale(12);
   const PADDING = scale(16);
   const AVAILABLE_WIDTH = SCREEN_WIDTH - (PADDING * 2);
-
   const isStacked = AVAILABLE_WIDTH < 500; 
 
   const LEFT_WIDTH = isStacked ? AVAILABLE_WIDTH : (AVAILABLE_WIDTH * 0.65) - (GRID_GAP / 2);
@@ -46,101 +44,62 @@ export default function SimulationScreen({
   const CHART_HEIGHT = scale(180);
   const RIGHT_CARD_HEIGHT = scale(160);
 
-  const [simulationId, setSimulationId] = useState<string | null>(null);
   const [currentHeartRate, setCurrentHeartRate] = useState(70);
   const [zone, setZone] = useState<HeartRateZone>('resting');
   const [intensity, setIntensity] = useState<ExerciseIntensity>('rest');
   const [history, setHistory] = useState<number[]>([70]);
   const [isRunning, setIsRunning] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [timeInZone, setTimeInZone] = useState(0);
   const [completed, setCompleted] = useState(false);
   const [grade, setGrade] = useState<string | null>(null);
 
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const lastUpdateRef = useRef(Date.now());
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    initializeSimulation();
+    socketService.connect(token);
+    
+    socketService.on('simulation_update', (state) => {
+      setCurrentHeartRate(state.currentHeartRate);
+      setZone(state.zone);
+      setHistory(state.history);
+      setIntensity(state.intensity);
+      setElapsedTime(state.elapsedTime);
+      setTimeInZone(state.timeInZone);
+      
+      if (state.completed && !completed) {
+        setCompleted(true);
+        setGrade(state.grade);
+        setIsRunning(false);
+      }
+    });
+
+    socketService.emit('set_challenge', challenge);
+
     return () => {
-      stopInterval();
+      socketService.disconnect();
     };
   }, []);
 
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.1,
-          duration: 400,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 400,
-          useNativeDriver: true,
-        }),
+        Animated.timing(pulseAnim, { toValue: 1.1, duration: 400, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
       ])
     ).start();
   }, []);
 
-  const stopInterval = () => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-  };
-
-  const initializeSimulation = async () => {
-    try {
-      const simData = await api.startSimulation(token);
-      setSimulationId(simData.simulationId);
-      await api.setSimulationChallenge(simData.simulationId, challenge, token);
-    } catch (error) {
-      console.error('Failed to initialize simulation:', error);
-    }
-  };
-
   const startSimulation = () => {
-    if (!simulationId) return;
     setIsRunning(true);
-    setIsPaused(false);
-    lastUpdateRef.current = Date.now();
-    intervalRef.current = setInterval(async () => {
-      const now = Date.now();
-      const deltaTime = now - lastUpdateRef.current;
-      lastUpdateRef.current = now;
-      try {
-        const updatedState = await api.updateSimulation(simulationId, null, deltaTime, token);
-        setCurrentHeartRate(updatedState.currentHeartRate);
-        setZone(updatedState.zone);
-        setHistory((prev) => {
-          const newHistory = [...prev, updatedState.currentHeartRate];
-          return newHistory.slice(-50);
-        });
-        if (updatedState.challenge) {
-          setElapsedTime(updatedState.elapsedTime);
-          setTimeInZone(updatedState.timeInZone);
-          if (updatedState.completed) handleComplete(updatedState.grade);
-        }
-      } catch (error) {
-        console.error('Simulation update failed:', error);
-      }
-    }, 100);
+    socketService.emit('start_simulation');
   };
 
   const stopSimulation = () => {
     setIsRunning(false);
-    setIsPaused(true);
-    stopInterval();
   };
 
-  const restartSimulation = async () => {
-    stopInterval();
-    setIsRunning(false);
-    setIsPaused(false);
+  const resetSimulation = () => {
     setElapsedTime(0);
     setTimeInZone(0);
     setHistory([70]);
@@ -148,34 +107,25 @@ export default function SimulationScreen({
     setCompleted(false);
     setGrade(null);
     setIntensity('rest');
-    initializeSimulation();
-  };
-
-  const handleComplete = (finalGrade: string) => {
-    setCompleted(true);
-    setGrade(finalGrade);
-    stopSimulation();
+    setIsRunning(false);
+    socketService.emit('start_simulation');
+    socketService.emit('set_challenge', challenge);
   };
 
   const saveAndExit = () => {
     if (completed) {
-        onComplete({ ...challenge, elapsedTime, timeInZone, completed, grade });
+      onComplete({ ...challenge, elapsedTime, timeInZone, completed, grade });
     } else {
-        Alert.alert("End Session?", "Are you sure you want to stop and save current progress?", [
-            { text: "Cancel", style: "cancel" },
-            { text: "Save & Exit", onPress: () => onComplete({ ...challenge, elapsedTime, timeInZone, completed: true, grade: 'C' }) } 
-        ]);
+      Alert.alert("End Session?", "Are you sure you want to stop and save current progress?", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Save & Exit", onPress: () => onComplete({ ...challenge, elapsedTime, timeInZone, completed: true, grade: 'C' }) } 
+      ]);
     }
   };
 
-  const handleIntensityChange = async (newIntensity: ExerciseIntensity) => {
-    if (!simulationId || completed) return;
-    setIntensity(newIntensity);
-    try {
-      await api.updateSimulation(simulationId, newIntensity, 0, token);
-    } catch (error) {
-      console.error('Failed to update intensity:', error);
-    }
+  const handleIntensityChange = (newIntensity: ExerciseIntensity) => {
+    if (completed) return;
+    socketService.emit('set_intensity', newIntensity);
   };
 
   const formatTime = (seconds: number) => {
@@ -190,7 +140,7 @@ export default function SimulationScreen({
   const textPrimary = { color: theme.colors.text };
   const textSecondary = { color: theme.colors.textSecondary };
 
-  const dynamicStyles = {
+  const dynamicStyles: Record<string, any> = {
     contentContainer: { padding: PADDING, paddingBottom: scale(40) },
     headerContainer: { marginBottom: scale(24) },
     screenTitle: { fontSize: scale(24), marginBottom: scale(8) },
@@ -198,9 +148,9 @@ export default function SimulationScreen({
     goalBadge: { borderRadius: scale(8), padding: scale(8) },
     goalText: { fontSize: scale(12) },
     dashboardRow: { 
-        flexDirection: (isStacked ? 'column' : 'row') as 'column' | 'row', 
-        justifyContent: 'space-between' as const, 
-        alignItems: 'flex-start' as const,
+        flexDirection: (isStacked ? 'column' : 'row'), 
+        justifyContent: 'space-between', 
+        alignItems: 'flex-start',
         gap: isStacked ? scale(16) : 0, 
     },
     columnGap: { gap: scale(16) },
@@ -209,7 +159,7 @@ export default function SimulationScreen({
     textLabel: { fontSize: scale(12), marginBottom: scale(2) },
     textValue: { fontSize: scale(16), marginBottom: scale(4) },
     progressBarBg: { height: scale(6), borderRadius: scale(3) },
-    buttonGroup: { flexDirection: 'row' as const, gap: scale(8) },
+    buttonGroup: { flexDirection: 'row', gap: scale(8) },
     actionBtn: { paddingVertical: scale(14), borderRadius: scale(12) },
     actionBtnText: { fontSize: scale(12) },
     challengeCard: { padding: scale(12) },
@@ -233,7 +183,6 @@ export default function SimulationScreen({
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: theme.colors.background }]} contentContainerStyle={dynamicStyles.contentContainer}>
-      
       <View style={dynamicStyles.headerContainer}>
         <Text style={[styles.baseText, dynamicStyles.screenTitle, textPrimary, { fontWeight: 'bold' }]}>{challenge.name}</Text>
         <Text style={[styles.baseText, dynamicStyles.screenDesc, textSecondary]}>{challenge.description}</Text>
@@ -245,7 +194,6 @@ export default function SimulationScreen({
       </View>
 
       <View style={dynamicStyles.dashboardRow}>
-        
         <View style={[{ width: LEFT_WIDTH }, dynamicStyles.columnGap]}>
             <View style={[styles.baseCard, dynamicStyles.card, { height: CHART_CARD_HEIGHT, backgroundColor: theme.colors.chartBackground }]}>
                 <HeartRateChart 
@@ -287,7 +235,7 @@ export default function SimulationScreen({
                         <Text style={[styles.baseText, dynamicStyles.actionBtnText, { color: '#fff', fontWeight: 'bold' }]}>STOP</Text>
                     </TouchableOpacity>
                 )}
-                <TouchableOpacity style={[styles.centerBtn, dynamicStyles.actionBtn, { backgroundColor: theme.colors.textSecondary, flex: 1 }]} onPress={restartSimulation}>
+                <TouchableOpacity style={[styles.centerBtn, dynamicStyles.actionBtn, { backgroundColor: theme.colors.textSecondary, flex: 1 }]} onPress={resetSimulation}>
                     <Text style={[styles.baseText, dynamicStyles.actionBtnText, { color: '#fff', fontWeight: 'bold' }]}>RESET</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.centerBtn, dynamicStyles.actionBtn, { backgroundColor: theme.colors.success, flex: 1 }]} onPress={saveAndExit}>
@@ -355,11 +303,8 @@ export default function SimulationScreen({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  baseText: {
-  },
+  container: { flex: 1 },
+  baseText: {},
   baseCard: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -367,15 +312,7 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
-  baseBorder: {
-    borderWidth: 1,
-  },
-  rowCenter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  centerBtn: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  baseBorder: { borderWidth: 1 },
+  rowCenter: { flexDirection: 'row', alignItems: 'center' },
+  centerBtn: { alignItems: 'center', justifyContent: 'center' },
 });
