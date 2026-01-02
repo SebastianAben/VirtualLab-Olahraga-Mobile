@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  # Service Backend
+  backend:
+    build: ./backend
+    container_name: virtuallab-backend
+    restart: always
+    ports:
+      - "${PORT}:${PORT}"
+    environment:
+      - PORT=${PORT}
+      - MONGODB_URI=${MONGODB_URI}
+      - JWT_SECRET=${JWT_SECRET}
+
+  # Service Mobile
+  mobile:
+    build: 
+      context: ./mobile
+      args:
+        - EXPO_PUBLIC_API_URL=${EXPO_PUBLIC_API_URL}
+    container_name: virtuallab-mobile
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
