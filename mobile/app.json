@@ -22,11 +22,26 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.virtuallab.mobile",
-      "usesCleartextTraffic": true
+      "package": "com.virtuallab.mobile"
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "cef5ae6d-1170-49fd-9ea0-2023063a8347"
+      }
     }
   }
 }
