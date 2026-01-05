@@ -85,6 +85,32 @@ io.on('connection', (socket) => {
     startSimulationLoop();
   });
 
+  socket.on('reset_simulation', () => {
+    // 1. Stop Loop
+    if (simulationInterval) {
+        clearInterval(simulationInterval);
+        simulationInterval = null;
+    }
+
+    // 2. Reset State
+    simulations[simulationId] = {
+      currentHeartRate: 70,
+      targetHeartRate: 70,
+      intensity: 'rest',
+      zone: 'resting',
+      history: [70],
+      heartRateVelocity: 0,
+      elapsedTime: 0,
+      timeInZone: 0,
+      challenge: null,
+      completed: false,
+      grade: null,
+    };
+
+    // 3. Emit Reset State immediately so frontend syncs to 0
+    socket.emit('simulation_update', simulations[simulationId]);
+  });
+
   socket.on('resume_simulation', () => {
     // Only start loop if state exists (Pause -> Resume logic)
     if (simulations[simulationId]) {
