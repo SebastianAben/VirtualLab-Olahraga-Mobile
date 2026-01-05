@@ -92,8 +92,14 @@ export default function SimulationScreen({
 
   const startSimulation = () => {
     setIsRunning(true);
-    socketService.emit('start_simulation');
-    socketService.emit('set_challenge', challenge);
+    if (elapsedTime > 0 && !completed) {
+        // Resume logic: Don't reset data, just start timer
+        socketService.emit('resume_simulation');
+    } else {
+        // Start fresh logic
+        socketService.emit('start_simulation');
+        socketService.emit('set_challenge', challenge);
+    }
   };
 
   const stopSimulation = () => {
@@ -102,6 +108,8 @@ export default function SimulationScreen({
   };
 
   const resetSimulation = () => {
+    // 1. Instant UI Feedback (Reset Frontend State)
+    setIsRunning(false);
     setElapsedTime(0);
     setTimeInZone(0);
     setHistory([70]);
@@ -109,11 +117,13 @@ export default function SimulationScreen({
     setCompleted(false);
     setGrade(null);
     setIntensity('rest');
-    setIsRunning(false);
+    setZone('resting');
+
+    // 2. Reset Backend State
+    socketService.emit('start_simulation'); // Reset data to defaults
+    socketService.emit('set_challenge', challenge); // Re-apply challenge
     
-    // Reset backend state
-    socketService.emit('start_simulation');
-    socketService.emit('set_challenge', challenge);
+    // 3. Immediately Pause Backend
     socketService.emit('stop_simulation');
   };
 

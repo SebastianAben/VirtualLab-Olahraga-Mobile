@@ -31,21 +31,8 @@ io.on('connection', (socket) => {
   let simulationInterval;
   const simulationId = socket.id;
 
-  socket.on('start_simulation', () => {
-    simulations[simulationId] = {
-      currentHeartRate: 70,
-      targetHeartRate: 70,
-      intensity: 'rest',
-      zone: 'resting',
-      history: [70],
-      heartRateVelocity: 0,
-      elapsedTime: 0,
-      timeInZone: 0,
-      challenge: null,
-      completed: false,
-      grade: null,
-    };
-
+  // Helper function to start the loop (reusable for Start and Resume)
+  const startSimulationLoop = () => {
     if (simulationInterval) clearInterval(simulationInterval);
 
     let lastUpdate = Date.now();
@@ -76,6 +63,33 @@ io.on('connection', (socket) => {
       simulations[simulationId] = state;
       socket.emit('simulation_update', state);
     }, 100);
+  };
+
+  socket.on('start_simulation', () => {
+    // Reset State (Hard Reset)
+    simulations[simulationId] = {
+      currentHeartRate: 70,
+      targetHeartRate: 70,
+      intensity: 'rest',
+      zone: 'resting',
+      history: [70],
+      heartRateVelocity: 0,
+      elapsedTime: 0,
+      timeInZone: 0,
+      challenge: null,
+      completed: false,
+      grade: null,
+    };
+    
+    // Start the loop
+    startSimulationLoop();
+  });
+
+  socket.on('resume_simulation', () => {
+    // Only start loop if state exists (Pause -> Resume logic)
+    if (simulations[simulationId]) {
+      startSimulationLoop();
+    }
   });
 
   socket.on('set_challenge', (challenge) => {
