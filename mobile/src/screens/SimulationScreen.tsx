@@ -93,6 +93,8 @@ export default function SimulationScreen({
   const startSimulation = () => {
     setIsRunning(true);
     socketService.emit('start_simulation');
+    // Segera kirim ulang challenge karena start_simulation di backend me-reset state challenge menjadi null
+    socketService.emit('set_challenge', challenge);
   };
 
   const stopSimulation = () => {
