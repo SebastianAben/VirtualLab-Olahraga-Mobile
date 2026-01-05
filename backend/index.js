@@ -94,6 +94,13 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('stop_simulation', () => {
+    if (simulationInterval) {
+      clearInterval(simulationInterval);
+      simulationInterval = null;
+    }
+  });
+
   socket.on('disconnect', () => {
     if (simulationInterval) clearInterval(simulationInterval);
     delete simulations[simulationId];

@@ -93,12 +93,12 @@ export default function SimulationScreen({
   const startSimulation = () => {
     setIsRunning(true);
     socketService.emit('start_simulation');
-    // Segera kirim ulang challenge karena start_simulation di backend me-reset state challenge menjadi null
     socketService.emit('set_challenge', challenge);
   };
 
   const stopSimulation = () => {
     setIsRunning(false);
+    socketService.emit('stop_simulation');
   };
 
   const resetSimulation = () => {
@@ -110,8 +110,11 @@ export default function SimulationScreen({
     setGrade(null);
     setIntensity('rest');
     setIsRunning(false);
+    
+    // Reset backend state
     socketService.emit('start_simulation');
     socketService.emit('set_challenge', challenge);
+    socketService.emit('stop_simulation');
   };
 
   const saveAndExit = () => {
